@@ -1,2 +1,4 @@
 # GPU
-Repository for GPU Project
+## Run Commands
+nvcc -o bubble_sort_comparison bubble_sort_comparison.cu 
+./bubble_sort_comparison <number_of_elements> <threads_per_block> <number_of_blocks>
