@@ -109,6 +109,41 @@ void printFullArray(const char *label, int *arr, int size) {
     printf("\n");
 }
 
+__global__ void global_merge_kernel(int *d_A, int num_blocks, int block_size, int N) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    // Each thread merges one segment of two adjacent blocks
+    if (tid >= num_blocks - 1) return;  // No work if out of bounds
+
+    int start1 = tid * block_size;             // Start of the first sorted block
+    int end1 = min(start1 + block_size - 1, N - 1); // End of the first block
+    int start2 = start1 + block_size;         // Start of the second sorted block
+    int end2 = min(start2 + block_size - 1, N - 1); // End of the second block
+
+    // Temporary storage for merged data (on shared memory for performance)
+    __shared__ int temp[2 * PER_BLOCK];
+
+    int merged_len = (end2 - start1 + 1);
+    int i = start1, j = start2, k = 0;
+
+    // Merge two sorted blocks
+    while (i <= end1 && j <= end2) {
+        if (d_A[i] <= d_A[j]) {
+            temp[k++] = d_A[i++];
+        } else {
+            temp[k++] = d_A[j++];
+        }
+    }
+    while (i <= end1) temp[k++] = d_A[i++];
+    while (j <= end2) temp[k++] = d_A[j++];
+
+    // Write merged result back to the original array
+    for (k = 0; k < merged_len; ++k) {
+        d_A[start1 + k] = temp[k];
+    }
+}
+
+
 // Global merge function to merge sorted blocks into a single sorted array
 void global_merge(int *arr, int num_blocks, int block_size, int N) {
     for (int i = 1; i < num_blocks; i++) {
@@ -167,12 +202,21 @@ int main(int argc, char *argv[]) {
     gettimeofday(&start_cuda, NULL);
     sample_sort<<<num_of_blocks, threads_per_block>>>(d_A, N);
     cudaDeviceSynchronize();
+
+    // Launch kernel to merge sorted blocks into a single sorted array
+    int threads_per_block_int = 128;  // Configure threads per block
+    int num_threads = num_blocks - 1;  // One thread per pair of blocks
+    int blocks_per_grid = (num_threads + threads_per_block_int - 1) / threads_per_block_int;
+
+    global_merge_kernel<<<blocks_per_grid, threads_per_block_int>>>(d_A, num_blocks, PER_BLOCK, N);
+    cudaDeviceSynchronize();  // Ensure the global merge completes
+    
     gettimeofday(&end_cuda, NULL);
 
     cudaMemcpy(h_A, d_A, size, cudaMemcpyDeviceToHost);
 
-    // Perform global merge to sort the entire array
-    global_merge(h_A, num_blocks, PER_BLOCK, N);
+    // // Perform global merge to sort the entire array
+    // global_merge(h_A, num_blocks, PER_BLOCK, N);
 
     // Print the entire sorted array
     printFullArray("Globally Sorted Array", h_A, N);
