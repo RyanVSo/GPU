@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
     // global_merge(h_A, num_blocks, PER_BLOCK, N);
 
     // Print the entire sorted array
-    printFullArray("Globally Sorted Array", h_A, N);
+    // printFullArray("Globally Sorted Array", h_A, N);
 
     cudaFree(d_A);
 
